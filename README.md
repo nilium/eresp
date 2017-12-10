@@ -1,6 +1,8 @@
 eresp
 =====
 
+[![Build Status](https://travis-ci.org/nilium/eresp.svg?branch=master)](https://travis-ci.org/nilium/eresp)
+
 eresp is a library to encode and decode [RESP](resp), the Redis serialization
 protocol.
 
