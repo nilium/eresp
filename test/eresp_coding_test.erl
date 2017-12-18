@@ -72,6 +72,14 @@ encode_server_test_() ->
                "\r\n"
              >>},
 
+            % Floats
+            {"Encoding floats as bulk strings",
+             [123.45, -123.45],
+             <<"*2\r\n"
+               "$6\r\n123.45\r\n"
+               "$7\r\n-123.45\r\n"
+               "\r\n">>},
+
             % Integers
             {"Encode integers as RESP integers",
              123456,
