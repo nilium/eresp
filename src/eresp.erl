@@ -24,7 +24,7 @@
 -type resp_term() :: resp_scalar() | list(resp_term()).
 -type resp_terms() :: list(resp_term()).
 -type options() :: #{
-	mode => client | server | none()
+        mode => client | server | none()
        }.
 -type error() :: {error, Reason :: term()}.
 
@@ -57,7 +57,7 @@ cmd(Command) ->
 cmd(Command, Args) when is_atom(Command), is_list(Args) ->
    cmd(atom_to_binary(Command, utf8), Args);
 cmd(Command, Args) when is_binary(Command), is_list(Args);
-			is_list(Command), is_list(Args) ->
+                        is_list(Command), is_list(Args) ->
    encode_list([upper(Command)|Args], #{mode => client}).
 
 
@@ -137,7 +137,7 @@ encode_term(_Term, _Options) ->
    error(badarg).
 
 -spec upper(binary()) -> binary();
-	   (string()) -> string().
+           (string()) -> string().
 upper(Bin) when is_binary(Bin) ->
    << <<(if C >= $a, C =< $z -> C - $a + $A; true -> C end)>>
       || <<C>> <= Bin >>;
