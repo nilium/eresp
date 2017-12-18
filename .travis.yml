@@ -5,4 +5,4 @@ otp_release:
   - 19.3
   - 18.3
 script:
-  - rebar3 as test do eunit -c, cover -v, dialyzer
+  - rebar3 as test do eunit, coveralls send, dialyzer
