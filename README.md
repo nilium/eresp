@@ -12,7 +12,29 @@ protocol.
 Decoding
 --------
 
-**TODO**
+eresp decoding is fairly straight-forward and converts binary RESP strings to
+Erlang terms.
+
+The table of RESP to Erlang decoding rules is in the edoc documentation.
+
+Decoding is fairly simple, however:
+
+```erlang
+RESP = <<"$3\r\nFoo\r\n$3\r\nbar\r\n">>.
+
+% Parse first term
+{ok, Term1, Rest1} = eresp:decode(RESP).
+io:format("Term1 = ~s~n", [Term1]).
+% => Term1 = foo
+
+% Parse next term
+{ok, Term2, Rest2} = eresp:decode(Rest1).
+io:format("Term2 = ~s~n", [Term2]).
+% => Term2 = bar
+
+% Done
+{error, eof} = eresp:decode(Rest2).
+```
 
 Encoding
 --------
@@ -24,25 +46,17 @@ and servers have the full range of types supported by Redis.
 Maps and tuples are not supported when encoding. Pids, ports, and other types
 that are specific to Erlang are also unsupported.
 
-eresp encode/1, encode/2, cmd/1, cmd/2, and resp/1 output is always an iolist or
-an `{error, Reason}` tuple.
+eresp encode/1, encode/2, cmd/1, and cmd/2 output is always an iolist or an
+`{error, Reason}` tuple.
 
 ### Server Encoding
 
-This is the default encoding when using encode/1, encode/2, and is what is used
-with the convenience function resp/1. It's recommended to use resp/1 to ensure
-your code is clear about its intent (i.e., is creating a server RESP response).
+This is the default encoding when using encode/1 (server encoding) and encode/2.
+It's recommended to use resp/1 to ensure your code is clear about its intent
+(i.e., is creating a server RESP response).
 
-- `'nil'` is a nil bulk string.
-- `'true'` and `'false'` are encoded as integers `1` and `0`.
-- `'ok'` is encoded as the simple string `OK`.
-- Integers are encoded as integers.
-- Floats are encoded as bulk strings.
-  This is done with `float_to_binary(F, [{decimal, 14}, compact])`.
-- Lists are always encoded as arrays -- no effort is made to treat a list as
-  a bulk string.
-- Atoms other than booleans, `'ok'`, and `'nil'` are encoded as bulk strings.
-- Binaries are always bulk strings.
+The full encoding table for server messages can be seen in the edoc
+documentation.
 
 ### Client Encoding
 
