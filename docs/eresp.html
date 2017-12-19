@@ -1,0 +1,244 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>Module eresp</title>
+<link rel="stylesheet" type="text/css" href="stylesheet.css" title="EDoc">
+</head>
+<body bgcolor="white">
+<div class="navbar"><a name="#navbar_top"></a><table width="100%" border="0" cellspacing="0" cellpadding="2" summary="navigation bar"><tr><td><a href="overview-summary.html" target="overviewFrame">Overview</a></td><td><a href="http://www.erlang.org/"><img src="erlang.png" align="right" border="0" alt="erlang logo"></a></td></tr></table></div>
+<hr>
+
+<h1>Module eresp</h1>
+<ul class="index"><li><a href="#description">Description</a></li><li><a href="#types">Data Types</a></li><li><a href="#index">Function Index</a></li><li><a href="#functions">Function Details</a></li></ul>eresp is a package for encoding and decoding the Redis serialization
+  protocol (RESP).
+
+
+<h2><a name="description">Description</a></h2>eresp is a package for encoding and decoding the Redis serialization
+  protocol (RESP).
+<h2><a name="types">Data Types</a></h2>
+
+<h3 class="typedecl"><a name="type-bad_resp_error">bad_resp_error()</a></h3>
+<p><tt>bad_resp_error() = {error, {bad_resp, [integer | simple_string | bulk_string | array | error | unknown]}}</tt></p>
+
+
+<h3 class="typedecl"><a name="type-command">command()</a></h3>
+<p><tt>command() = atom() | binary() | nonempty_string()</tt></p>
+
+
+<h3 class="typedecl"><a name="type-decoded_term">decoded_term()</a></h3>
+<p><tt>decoded_term() = {ok, Term::<a href="#type-resp_term">resp_term()</a>, Rest::binary()}</tt></p>
+
+
+<h3 class="typedecl"><a name="type-error">error()</a></h3>
+<p><tt>error() = {error, Reason::term()}</tt></p>
+
+
+<h3 class="typedecl"><a name="type-options">options()</a></h3>
+<p><tt>options() = #{mode =&gt; client | server | none()}</tt></p>
+
+
+<h3 class="typedecl"><a name="type-resp_error">resp_error()</a></h3>
+<p><tt>resp_error() = {error, string() | binary()}</tt></p>
+
+
+<h3 class="typedecl"><a name="type-resp_scalar">resp_scalar()</a></h3>
+<p><tt>resp_scalar() = number() | iolist() | string() | binary() | atom() | boolean() | nil</tt></p>
+
+
+<h3 class="typedecl"><a name="type-resp_term">resp_term()</a></h3>
+<p><tt>resp_term() = <a href="#type-resp_scalar">resp_scalar()</a> | <a href="#type-resp_error">resp_error()</a> | <a href="#type-resp_terms">resp_terms()</a></tt></p>
+
+
+<h3 class="typedecl"><a name="type-resp_terms">resp_terms()</a></h3>
+<p><tt>resp_terms() = [<a href="#type-resp_term">resp_term()</a>]</tt></p>
+
+
+<h2><a name="index">Function Index</a></h2>
+<table width="100%" border="1" cellspacing="0" cellpadding="2" summary="function index"><tr><td valign="top"><a href="#cmd-1">cmd/1</a></td><td>Equivalent to <a href="#cmd-2"><tt>cmd(Command, [])</tt></a>.
+</td></tr>
+<tr><td valign="top"><a href="#cmd-2">cmd/2</a></td><td>Encodes a client command as a flat array of bulk strings, containing  
+Command as its command and Args as the arguments to that command.</td></tr>
+<tr><td valign="top"><a href="#decode-1">decode/1</a></td><td>Decodes a binary string as RESP, returning Erlang terms representing  
+the elements of the RESP provided.</td></tr>
+<tr><td valign="top"><a href="#encode-1">encode/1</a></td><td>Equivalent to <a href="#encode-2"><tt>encode(Term, #{})</tt></a>.
+</td></tr>
+<tr><td valign="top"><a href="#encode-2">encode/2</a></td><td>Encodes an Erlang term using the given options.</td></tr>
+</table>
+
+<h2><a name="functions">Function Details</a></h2>
+
+<h3 class="function"><a name="cmd-1">cmd/1</a></h3>
+<div class="spec">
+<p><tt>cmd(Command::<a href="#type-command">command()</a>) -&gt; iolist() | <a href="#type-error">error()</a></tt><br></p>
+</div><p>Equivalent to <a href="#cmd-2"><tt>cmd(Command, [])</tt></a>.</p>
+
+
+<h3 class="function"><a name="cmd-2">cmd/2</a></h3>
+<div class="spec">
+<p><tt>cmd(Command::<a href="#type-command">command()</a>, Args::<a href="#type-resp_terms">resp_terms()</a>) -&gt; iolist() | <a href="#type-error">error()</a></tt><br></p>
+</div><p><p>Encodes a client command as a flat array of bulk strings, containing  
+Command as its command and Args as the arguments to that command.</p>
+ 
+  This is intended for use as the client encoding when sending commands to
+  a Redis or RESP-compatible server.</p>
+
+<h3 class="function"><a name="decode-1">decode/1</a></h3>
+<div class="spec">
+<p><tt>decode(Bin::binary()) -&gt; <a href="#type-decoded_term">decoded_term()</a> | <a href="#type-bad_resp_error">bad_resp_error()</a></tt><br></p>
+</div><p><p>Decodes a binary string as RESP, returning Erlang terms representing  
+the elements of the RESP provided.</p>
+ 
+  <p>If decoding is successful, returns the tuple <code>{ok, Term, Rest}</code>, where Term  
+is an Erlang term representing the decoded RESP, and Rest is the tail of Bin  
+that was not parsed.</p>
+ 
+  <p>If there is an error decoding Bin (because the RESP is invalid), the result
+  is {error, {bad_resp, Stack}}, where Stack is a list of atoms showing the
+  parsing stack. Often, the last element is the most relevant -- the last is
+  the element decode thought it was parsing and failed to handle. In cases
+  where the binary makes no sense at all, the atom is <code>'unknown'</code>.</p>
+ 
+  <h4><a name="Decoding_Table">Decoding Table</a></h4>
+ 
+  <table border="1">
+    <tr>
+      <th>RESP Type</th>
+      <th>Erlang Type</th>
+    </tr>
+    <tr>
+      <td>Simple String "OK"</td>
+      <td><code>'ok'</code></td>
+    </tr>
+    <tr>
+      <td>Simple String</td>
+      <td>Binaries: <code>&lt;&lt;"Simple String"&gt;&gt;</code></td>
+    </tr>
+    <tr>
+      <td>Bulk String</td>
+      <td>Binaries: <code>&lt;&lt;"Bulk String"&gt;&gt;</code></td>
+    </tr>
+    <tr>
+      <td>Array</td>
+      <td>Lists</td>
+    </tr>
+    <tr>
+      <td>Integer</td>
+      <td>Integer</td>
+    </tr>
+    <tr>
+      <td>Bulk Nil (Array / String)</td>
+      <td><code>'nil'</code></td>
+    </tr>
+    <tr>
+      <td>Errors</td>
+      <td><code>{error, &lt;&lt;"ERROR description"&gt;&gt;}</code></td>
+    </tr>
+  </table></p>
+
+<h3 class="function"><a name="encode-1">encode/1</a></h3>
+<div class="spec">
+<p><tt>encode(Term) -&gt; any()</tt></p>
+</div><p>Equivalent to <a href="#encode-2"><tt>encode(Term, #{})</tt></a>.</p>
+
+
+<h3 class="function"><a name="encode-2">encode/2</a></h3>
+<div class="spec">
+<p><tt>encode(Term::<a href="#type-resp_term">resp_term()</a>, Options::<a href="#type-options">options()</a>) -&gt; iolist()</tt><br></p>
+</div><p><p>Encodes an Erlang term using the given options. If the Term cannot be
+  encoded, it fails with a <code>badarg</code> error.</p>
+ 
+  <p>Options may include a <code>mode</code> key, which if set to <code>client</code> will encode all
+  terms passed as bulk strings. To produce a flat list suitable for client
+  encoding of a command, you can use the <code>cmd/2</code> function.</p>
+ 
+  <p>By default, if no options are given (i.e., Options is an empty map), server
+  encoding is used. For common cases using server encoding, you should prefer
+  using <code>encode/1</code>.</p>
+ 
+  <h4><a name="Client_Encoding">Client Encoding</a></h4>
+ 
+  <p>The following types can be encoded as bulk strings in client encoding:</p>
+ 
+  <ul>
+  <li>IOLists</li>
+  <li>Binaries</li>
+  <li>Integers</li>
+  <li>Floats</li>
+  <li>Atoms</li>
+  </ul>
+ 
+  <h4><a name="Server_Encoding">Server Encoding</a></h4>
+ 
+  <p>The following table details how different Erlang terms are encoded in RESP:</p>
+ 
+  <table border="1">
+    <tr>
+      <th width="20%">Erlang</th>
+      <th>RESP</th>
+    </tr>
+    <tr>
+      <td>12345 (Integer)</td>
+      <td>Integers.</td>
+    </tr>
+    <tr>
+      <td>123.45 (Float)</td>
+      <td>
+        A bulk string, encoded in compact form with up to 14 decimals. If you
+        need more or fewer digits, convert your float to a string ahead of time
+        to ensure it's encoded as desired.
+      </td>
+    </tr>
+    <tr>
+      <td>Binaries</td>
+      <td>Bulk strings.</td>
+    </tr>
+    <tr>
+      <td>Lists</td>
+      <td>Encoded as arrays.</td>
+    </tr>
+    <tr>
+      <td><code>{bulk, IOList}</code></td>
+      <td>
+        Bulk strings. This allows using an IOList for a bulk string when
+        performing server encoding, as lists are encoded as arrays.
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code>{error, Message}</code><br>
+        <code>{error, {Class, Reason}}</code>
+      </td>
+      <td><p>
+        Errors. If the second form is used, <code>Class</code> and <code>Reason</code> are encoded
+        into a single error message of the form <code>CLASS Reason</code>, and <code>Class</code> is        
+uppercased, as in common Redis error messages.</p>
+ 
+        <code>Class</code>, <code>Reason</code>, and <code>Message</code> may be an atom, string, or binary
+        string.
+      </td>
+    </tr>
+    <tr>
+      <td><code>'ok'</code></td>
+      <td>The simple string <code>OK</code>.</td>
+    </tr>
+    <tr>
+      <td><code>'nil'</code></td>
+      <td>
+        A null bulk string. Although semantically equivalent to a null bulk
+        array, the null array is never used in encoding in eresp.
+      </td>
+    </tr>
+    <tr>
+      <td><code>'true'</code>, <code>'false'</code></td>
+      <td>RESP integers 1 and 0, respectively.</td>
+    </tr>
+  </table>
+ </p>
+<p><b>See also:</b> <a href="#cmd-2">cmd/2</a>.</p>
+<hr>
+
+<div class="navbar"><a name="#navbar_bottom"></a><table width="100%" border="0" cellspacing="0" cellpadding="2" summary="navigation bar"><tr><td><a href="overview-summary.html" target="overviewFrame">Overview</a></td><td><a href="http://www.erlang.org/"><img src="erlang.png" align="right" border="0" alt="erlang logo"></a></td></tr></table></div>
+<p><i>Generated by EDoc</i></p>
+</body>
+</html>
