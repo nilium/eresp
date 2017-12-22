@@ -43,22 +43,23 @@ eresp encoding is split into two categories: server and client. This is to
 follow the RESP specification, where a client sends flat lists of bulk strings,
 and servers have the full range of types supported by Redis.
 
-Maps and tuples are not supported when encoding. Pids, ports, and other types
-that are specific to Erlang are also unsupported.
+Maps and tuples are not supported when encoding (maps are unsupported due to
+poor iteration support, tuples are used only in special cases). Pids, ports, and
+other types that are specific to Erlang are also unsupported.
 
-eresp encode/1, encode/2, cmd/1, and cmd/2 output is always an iolist or an
-`{error, Reason}` tuple.
+encode\_server/1, encode\_client/1, cmd/1, and cmd/2 output is always a tuple of
+`{ok, iolist()}` or `{error, badarg}`.
 
 ### Server Encoding
 
-This is the default encoding when using encode/1 (server encoding) and encode/2.
-It's recommended to use resp/1 to ensure your code is clear about its intent
-(i.e., is creating a server RESP response).
-
-The full encoding table for server messages can be seen in the edoc
-documentation.
+This is the encoding used by encode\_server/1. The full encoding table for
+server messages can be seen in the edoc documentation.
 
 ### Client Encoding
+
+Client encoding simply means encoding a term as a bulk string, which is all
+encode\_client/1 will do. When using cmd/1 or cmd/2, it will encode a list using
+client encoding and return the resulting iolist.
 
 To encode a command list with eresp, use cmd/1 or cmd/2 (for a command with
 arguments):
@@ -67,13 +68,13 @@ arguments):
 % cmd/1
 % Encodes as an array of
 % - PING
-eresp:cmd(ping).
+{ok, Ping} = eresp:cmd(ping).
 
 % cmd/2
 % Encodes as an array of
 % - PING
 % - pong
-eresp:cmd(ping, [<<"pong">>]).
+{ok, PingPong} = eresp:cmd(ping, [<<"pong">>]).
 ```
 
 You can use encode/2 to encode a client value as well, but this is primarily for
@@ -84,13 +85,12 @@ mode=client option in the options map:
 % encode/2
 % Requires the option mode=client to use client encoding.
 % Returns an iolist for <<"$5\r\n12345\r\n">>.
-eresp:encode(12345, #{mode => client}).
+{ok, Msg} = eresp:encode_client(12345).
 ```
 
 - Everything is encoded as a bulk string.
 - Lists are treated as iolists (these are not checked, so it is possible to
-  create an invalid message by passing a list of maps or something similarly
-  strange).
+  create a non-iolist by passing a list of maps or something similarly strange).
 
 Build
 -----

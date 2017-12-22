@@ -16,24 +16,21 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
-encode_test_gen(Fn, {In, Out, Options}) ->
-  fun() ->
-      Got = try iolist_to_binary(eresp:Fn(In, Options))
-            catch error:Reason -> {error, Reason} end,
-      ?assertEqual(Out, Got)
-  end;
+%% Server Encoding
+
 encode_test_gen(Fn, {In, Out}) ->
   fun() ->
-      Got = try iolist_to_binary(eresp:Fn(In))
-            catch error:Reason -> {error, Reason} end,
+      Got = case eresp:Fn(In) of
+              {ok, IOList} -> {ok, iolist_to_binary(IOList)};
+              {error, _} = Error -> Error
+            end,
       ?assertEqual(Out, Got)
   end.
 
 encode_server_test_() ->
   {inparallel,
 
-   [[{Desc ++ " (encode/2)", encode_test_gen(encode, {In, Out, #{}})},
-     {Desc ++ " (encode/1)", encode_test_gen(encode, {In, Out})}]
+   [{Desc ++ " (encode_server/1)", encode_test_gen(encode_server, {In, Out})}
     || {Desc, In, Out}
        <- [ %% { Desc, In, Out } = ServerTest
 
@@ -42,49 +39,49 @@ encode_server_test_() ->
            % and false.
            {"Encode true as the integer 1",
             true,
-            <<":1\r\n">>},
+            {ok, <<":1\r\n">>}},
            {"Encode false as the integer 0",
             false,
-            <<":0\r\n">>},
+            {ok, <<":0\r\n">>}},
 
            {"Encode {error, binary()} as an error",
             {error, <<"ERROR bad message">>},
-            <<"-ERROR bad message\r\n">>},
+            {ok, <<"-ERROR bad message\r\n">>}},
 
            {"Encode {error, string()} as an error",
             {error, "ERROR bad message"},
-            <<"-ERROR bad message\r\n">>},
+            {ok, <<"-ERROR bad message\r\n">>}},
 
            {"Encode {error, {Class, Reason}} as an error",
             {error, {error, "bad message"}},
-            <<"-ERROR bad message\r\n">>},
+            {ok, <<"-ERROR bad message\r\n">>}},
 
            {"Encode nil as a nil string",
             nil,
-            <<"$-1\r\n">>},
+            {ok, <<"$-1\r\n">>}},
 
            % ok is a special case and is sent as a simple string -- this is preferable
            % to converting it to a binary since clients often understand this as
            % a special case.
            {"Encode 'ok' as the simple string OK",
             ok,
-            <<"+OK\r\n">>},
+            {ok, <<"+OK\r\n">>}},
 
            {"Encode binaries as bulk strings",
             <<"foobar">>,
-            <<"$6\r\nfoobar\r\n">>},
+            {ok, <<"$6\r\nfoobar\r\n">>}},
 
            {"Encode {bulk, iolist()} tuples as bulk strings",
             {bulk, [<<"foo">>, [$b] | "ar"]},
-            <<"$6\r\nfoobar\r\n">>},
+            {ok, <<"$6\r\nfoobar\r\n">>}},
 
            {"Encode empty lists as empty arrays",
             [],
-            <<"*0\r\n\r\n">>},
+            {ok, <<"*0\r\n\r\n">>}},
 
            {"Encode lists as arrays",
             [<<"foo">>, $b, "ar"],
-            <<"*3\r\n",
+            {ok, <<"*3\r\n",
               "$3\r\nfoo\r\n",
               ":98\r\n",
               "*2\r\n",
@@ -92,33 +89,33 @@ encode_server_test_() ->
               ":114\r\n"
               "\r\n"
               "\r\n"
-            >>},
+            >>}},
 
            % Floats
-           {"Encoding floats as bulk strings",
+           {"Encode floats as bulk strings",
             [123.45, -123.45],
-            <<"*2\r\n"
+            {ok, <<"*2\r\n"
               "$6\r\n123.45\r\n"
               "$7\r\n-123.45\r\n"
-              "\r\n">>},
+              "\r\n">>}},
 
            % Integers
            {"Encode integers as RESP integers",
             123456,
-            <<":123456\r\n">>},
+            {ok, <<":123456\r\n">>}},
            {"Encode negative integers as RESP integers",
             -123456,
-            <<":-123456\r\n">>},
+            {ok, <<":-123456\r\n">>}},
 
            %% Invalid
 
            {"Do not encode invalid iolists as bulk strings",
             {bulk, [<<"foo">>, an_atom, [$b] | "ar"]},
-            {error, bad_iolist}},
+            {error, badarg}},
 
            {"Do not encode non-iolists as bulk strings",
             {bulk, 123.45},
-            {error, bad_iolist}},
+            {error, badarg}},
 
            {"Do not encode errors with special characters (\\n; binary)",
             {error, <<"NOPE bad\nerror">>},
@@ -142,10 +139,108 @@ encode_server_test_() ->
 
           ]]}.
 
+
+%% Client Encoding
+
+encode_client_test_() ->
+  {inparallel,
+
+   [{Desc ++ " (encode_client/1)", encode_test_gen(encode_client, {In, Out})}
+    || {Desc, In, Out}
+       <- [ %% { Desc, In, Out } = ServerTest
+
+           % Booleans -- these don't follow the convention used by redis's EVAL, but
+           % instead encode true/false as integers 1 and 0, since this disambiguates nil
+           % and false.
+           {"Encode true as a bulk string",
+            true,
+            {ok, <<"$4\r\ntrue\r\n">>}},
+           {"Encode false as a bulk string",
+            false,
+            {ok, <<"$5\r\nfalse\r\n">>}},
+
+           {"Encode {error, binary()} fails",
+            {error, <<"ERROR bad message">>},
+            {error, badarg}},
+
+           {"Encode {error, string()} fails",
+            {error, "ERROR bad message"},
+            {error, badarg}},
+
+           {"Encode {error, {Class, Reason}} fails",
+            {error, {error, "bad message"}},
+            {error, badarg}},
+
+           {"Encode nil as a bulk string",
+            nil,
+            {ok, <<"$3\r\nnil\r\n">>}},
+
+           % ok is a special case and is sent as a simple string -- this is preferable
+           % to converting it to a binary since clients often understand this as
+           % a special case.
+           {"Encode 'ok' as a bulk string",
+            ok,
+            {ok, <<"$2\r\nok\r\n">>}},
+
+           {"Encode binaries as bulk strings",
+            <<"foobar">>,
+            {ok, <<"$6\r\nfoobar\r\n">>}},
+
+           {"Encode {bulk, iolist()} fails",
+            {bulk, [<<"foo">>, [$b] | "ar"]},
+            {error, badarg}},
+
+           {"Encode empty lists as bulk strings",
+            [],
+            {ok, <<"$0\r\n\r\n">>}},
+
+           {"Encode lists as iolist bulk strings",
+            [<<"foo">>, $b, "ar"],
+            {ok, <<"$6\r\nfoobar\r\n">>}},
+
+           % Floats
+           {"Encode floats as bulk strings",
+            -123.45,
+            {ok, <<"$7\r\n-123.45\r\n">>}},
+
+           % Integers
+           {"Encode integers as bulk strings",
+            123456,
+            {ok, <<"$6\r\n123456\r\n">>}},
+
+           {"Encode negative integers as bulk strings",
+            -123456,
+            {ok, <<"$7\r\n-123456\r\n">>}},
+
+           %% Invalid
+
+           {"Do not encode invalid iolists as bulk strings",
+            {bulk, [<<"foo">>, an_atom, [$b] | "ar"]},
+            {error, badarg}},
+
+           {"Do not encode pids",
+            self(),
+            {error, badarg}}
+
+          ]]}.
+
+
 cmd_test_gen({Cmd, Args}, Out) ->
-  fun() -> ?assertEqual(Out, iolist_to_binary(eresp:cmd(Cmd, Args))) end;
+  fun() ->
+      Got = case eresp:cmd(Cmd, Args) of
+              {error, _} = Error -> Error;
+              {ok, IOList} -> {ok, iolist_to_binary(IOList)}
+            end,
+      ?assertEqual(Out, Got)
+  end;
 cmd_test_gen(Cmd, Out) ->
-  fun() -> ?assertEqual(Out, iolist_to_binary(eresp:cmd(Cmd))) end.
+  fun() ->
+      Got = case eresp:cmd(Cmd) of
+              {error, _} = Error -> Error;
+              {ok, IOList} -> {ok, iolist_to_binary(IOList)}
+            end,
+      ?assertEqual(Out, Got)
+  end.
 
 cmd_test_() ->
   {inparallel,
@@ -157,31 +252,31 @@ cmd_test_() ->
            %% Use ping as a simple command example
            {"Ping (cmd/1) - atom",
             ping,
-            <<"*1\r\n$4\r\nPING\r\n\r\n">>},
+            {ok, <<"*1\r\n$4\r\nPING\r\n\r\n">>}},
 
            {"Ping (cmd/2) - atom",
             {ping, []},
-            <<"*1\r\n$4\r\nPING\r\n\r\n">>},
+            {ok, <<"*1\r\n$4\r\nPING\r\n\r\n">>}},
 
            {"Ping (cmd/1) - binary",
             <<"Ping">>,
-            <<"*1\r\n$4\r\nPING\r\n\r\n">>},
+            {ok, <<"*1\r\n$4\r\nPING\r\n\r\n">>}},
 
            {"Ping (cmd/1) - list",
             "ping",
-            <<"*1\r\n$4\r\nPING\r\n\r\n">>},
+            {ok, <<"*1\r\n$4\r\nPING\r\n\r\n">>}},
 
            {"Ping (cmd/2) - pong",
             {ping, ["pong"]},
-            <<"*2\r\n$4\r\nPING\r\n$4\r\npong\r\n\r\n">>},
+            {ok, <<"*2\r\n$4\r\nPING\r\n$4\r\npong\r\n\r\n">>}},
 
            {"Nested lists are iolists",
             {rpush, ["key", ["foo", <<"bar">>]]},
-            <<"*3\r\n$5\r\nRPUSH\r\n$3\r\nkey\r\n$6\r\nfoobar\r\n\r\n">>},
+            {ok, <<"*3\r\n$5\r\nRPUSH\r\n$3\r\nkey\r\n$6\r\nfoobar\r\n\r\n">>}},
 
            {"All types are bulk strings",
             {type, [-123, "list", <<"bin">>, 123.45, true, false, nil, [], <<>>, [<<>>]]},
-            <<"*11\r\n"
+            {ok, <<"*11\r\n"
               "$4\r\nTYPE\r\n"
               "$4\r\n-123\r\n"
               "$4\r\nlist\r\n"
@@ -193,7 +288,13 @@ cmd_test_() ->
               "$0\r\n\r\n"
               "$0\r\n\r\n"
               "$0\r\n\r\n"
-              "\r\n">>}
+              "\r\n">>}},
+
+           %% Invalid messages
+
+           {"Do not encode tuples",
+            {encode, [{bulk, [<<"foobar">>]}]},
+            {error, badarg}}
 
           ]]}.
 
@@ -212,9 +313,11 @@ decode_test_gen({In, {ok, WantedTerm, _} = Out}) ->
       io:format("~w~n", [Out]),
       {ok, GotTerm, Rest} = Decoded = eresp:decode(In),
       ?assertEqual(Out, Decoded),
-      Encoded = iolist_to_binary(eresp:encode(WantedTerm)),
+      {ok, EncodedIOList} = eresp:encode_server(WantedTerm),
+      Encoded = iolist_to_binary(EncodedIOList),
       ?assertEqual(In, <<Encoded/binary, Rest/binary>>),
-      Reencoded = iolist_to_binary(eresp:encode(GotTerm)),
+      {ok, ReencodedIOList} = eresp:encode_server(GotTerm),
+      Reencoded = iolist_to_binary(ReencodedIOList),
       ?assertEqual(In, <<Reencoded/binary, Rest/binary>>)
   end.
 

@@ -18,24 +18,8 @@
   protocol (RESP).
 <h2><a name="types">Data Types</a></h2>
 
-<h3 class="typedecl"><a name="type-bad_resp_error">bad_resp_error()</a></h3>
-<p><tt>bad_resp_error() = {error, {bad_resp, [integer | simple_string | bulk_string | array | error | unknown]}}</tt></p>
-
-
 <h3 class="typedecl"><a name="type-command">command()</a></h3>
 <p><tt>command() = atom() | binary() | nonempty_string()</tt></p>
-
-
-<h3 class="typedecl"><a name="type-decoded_term">decoded_term()</a></h3>
-<p><tt>decoded_term() = {ok, Term::<a href="#type-resp_term">resp_term()</a>, Rest::binary()}</tt></p>
-
-
-<h3 class="typedecl"><a name="type-error">error()</a></h3>
-<p><tt>error() = {error, Reason::term()}</tt></p>
-
-
-<h3 class="typedecl"><a name="type-options">options()</a></h3>
-<p><tt>options() = #{mode =&gt; client | server | none()}</tt></p>
 
 
 <h3 class="typedecl"><a name="type-resp_error">resp_error()</a></h3>
@@ -47,11 +31,7 @@
 
 
 <h3 class="typedecl"><a name="type-resp_term">resp_term()</a></h3>
-<p><tt>resp_term() = <a href="#type-resp_scalar">resp_scalar()</a> | <a href="#type-resp_error">resp_error()</a> | <a href="#type-resp_terms">resp_terms()</a></tt></p>
-
-
-<h3 class="typedecl"><a name="type-resp_terms">resp_terms()</a></h3>
-<p><tt>resp_terms() = [<a href="#type-resp_term">resp_term()</a>]</tt></p>
+<p><tt>resp_term() = [<a href="#type-resp_term">resp_term()</a>] | <a href="#type-resp_scalar">resp_scalar()</a> | <a href="#type-resp_error">resp_error()</a></tt></p>
 
 
 <h2><a name="index">Function Index</a></h2>
@@ -61,22 +41,24 @@
 Command as its command and Args as the arguments to that command.</td></tr>
 <tr><td valign="top"><a href="#decode-1">decode/1</a></td><td>Decodes a binary string as RESP, returning Erlang terms representing  
 the elements of the RESP provided.</td></tr>
-<tr><td valign="top"><a href="#encode-1">encode/1</a></td><td>Equivalent to <a href="#encode-2"><tt>encode(Term, #{})</tt></a>.
-</td></tr>
-<tr><td valign="top"><a href="#encode-2">encode/2</a></td><td>Encodes an Erlang term using the given options.</td></tr>
+<tr><td valign="top"><a href="#encode_client-1">encode_client/1</a></td><td>Encodes an Erlang term using client encoding (e.g., to send to a Redis
+  or similar server).</td></tr>
+<tr><td valign="top"><a href="#encode_server-1">encode_server/1</a></td><td>Encodes an Erlang term using server encoding (e.g., responses to
+  a client).</td></tr>
 </table>
 
 <h2><a name="functions">Function Details</a></h2>
 
 <h3 class="function"><a name="cmd-1">cmd/1</a></h3>
 <div class="spec">
-<p><tt>cmd(Command::<a href="#type-command">command()</a>) -&gt; iolist() | <a href="#type-error">error()</a></tt><br></p>
+<p><tt>cmd(Command::<a href="#type-command">command()</a>) -&gt; iolist() | {error, badarg}</tt><br></p>
 </div><p>Equivalent to <a href="#cmd-2"><tt>cmd(Command, [])</tt></a>.</p>
 
 
 <h3 class="function"><a name="cmd-2">cmd/2</a></h3>
 <div class="spec">
-<p><tt>cmd(Command::<a href="#type-command">command()</a>, Args::<a href="#type-resp_terms">resp_terms()</a>) -&gt; iolist() | <a href="#type-error">error()</a></tt><br></p>
+<p><tt>cmd(Command, Args) -&gt; iolist() | {error, badarg}</tt>
+<ul class="definitions"><li><tt>Command = <a href="#type-command">command()</a></tt></li><li><tt>Args = [atom() | iolist() | number() | binary()]</tt></li></ul></p>
 </div><p><p>Encodes a client command as a flat array of bulk strings, containing  
 Command as its command and Args as the arguments to that command.</p>
  
@@ -85,7 +67,8 @@ Command as its command and Args as the arguments to that command.</p>
 
 <h3 class="function"><a name="decode-1">decode/1</a></h3>
 <div class="spec">
-<p><tt>decode(Bin::binary()) -&gt; <a href="#type-decoded_term">decoded_term()</a> | <a href="#type-bad_resp_error">bad_resp_error()</a></tt><br></p>
+<p><tt>decode(Bin::binary()) -&gt; Decoded | Error</tt>
+<ul class="definitions"><li><tt>Decoded = {ok, Term, Rest::binary()}</tt></li><li><tt>Term = [Term] | binary() | integer() | nil | ok | {error, binary()}</tt></li><li><tt>Error = {error, eof | {bad_resp, [integer | simple_string | bulk_string | array | error | unknown]}}</tt></li></ul></p>
 </div><p><p>Decodes a binary string as RESP, returning Erlang terms representing  
 the elements of the RESP provided.</p>
  
@@ -136,29 +119,15 @@ that was not parsed.</p>
     </tr>
   </table></p>
 
-<h3 class="function"><a name="encode-1">encode/1</a></h3>
+<h3 class="function"><a name="encode_client-1">encode_client/1</a></h3>
 <div class="spec">
-<p><tt>encode(Term) -&gt; any()</tt></p>
-</div><p>Equivalent to <a href="#encode-2"><tt>encode(Term, #{})</tt></a>.</p>
-
-
-<h3 class="function"><a name="encode-2">encode/2</a></h3>
-<div class="spec">
-<p><tt>encode(Term::<a href="#type-resp_term">resp_term()</a>, Options::<a href="#type-options">options()</a>) -&gt; iolist()</tt><br></p>
-</div><p><p>Encodes an Erlang term using the given options. If the Term cannot be
-  encoded, it fails with a <code>badarg</code> error.</p>
+<p><tt>encode_client(Term) -&gt; {ok, iolist()} | {error, badarg}</tt>
+<ul class="definitions"><li><tt>Term = atom() | iolist() | number() | binary()</tt></li></ul></p>
+</div><p><p>Encodes an Erlang term using client encoding (e.g., to send to a Redis
+  or similar server). This will encode Term as a bulk string. To encode an
+  array of terms, including a command string, use <code>cmd/2</code>.</p>
  
-  <p>Options may include a <code>mode</code> key, which if set to <code>client</code> will encode all
-  terms passed as bulk strings. To produce a flat list suitable for client
-  encoding of a command, you can use the <code>cmd/2</code> function.</p>
- 
-  <p>By default, if no options are given (i.e., Options is an empty map), server
-  encoding is used. For common cases using server encoding, you should prefer
-  using <code>encode/1</code>.</p>
- 
-  <h4><a name="Client_Encoding">Client Encoding</a></h4>
- 
-  <p>The following types can be encoded as bulk strings in client encoding:</p>
+  <p>The following types can be encoded as bulk strings:</p>
  
   <ul>
   <li>IOLists</li>
@@ -167,6 +136,16 @@ that was not parsed.</p>
   <li>Floats</li>
   <li>Atoms</li>
   </ul>
+ </p>
+<p><b>See also:</b> <a href="#cmd-2">cmd/2</a>.</p>
+
+<h3 class="function"><a name="encode_server-1">encode_server/1</a></h3>
+<div class="spec">
+<p><tt>encode_server(Term) -&gt; {ok, iolist()} | {error, badarg}</tt>
+<ul class="definitions"><li><tt>Term = [Term] | number() | atom() | binary() | {bulk, iolist()} | {error, Reason | {Class, Reason}}</tt></li><li><tt>Reason = atom() | binary() | nonempty_string()</tt></li><li><tt>Class = Reason</tt></li></ul></p>
+</div><p><p>Encodes an Erlang term using server encoding (e.g., responses to
+  a client). If the Term cannot be encoded, it fails with a <code>badarg</code> error.</p>
+ 
  
   <h4><a name="Server_Encoding">Server Encoding</a></h4>
  
@@ -233,9 +212,7 @@ uppercased, as in common Redis error messages.</p>
       <td><code>'true'</code>, <code>'false'</code></td>
       <td>RESP integers 1 and 0, respectively.</td>
     </tr>
-  </table>
- </p>
-<p><b>See also:</b> <a href="#cmd-2">cmd/2</a>.</p>
+  </table></p>
 <hr>
 
 <div class="navbar"><a name="#navbar_bottom"></a><table width="100%" border="0" cellspacing="0" cellpadding="2" summary="navigation bar"><tr><td><a href="overview-summary.html" target="overviewFrame">Overview</a></td><td><a href="http://www.erlang.org/"><img src="erlang.png" align="right" border="0" alt="erlang logo"></a></td></tr></table></div>

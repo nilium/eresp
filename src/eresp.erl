@@ -17,29 +17,17 @@
 -module(eresp).
 
 %% API exports
--export([encode/1, encode/2]).
+-export([encode_client/1, encode_server/1]).
 -export([cmd/1, cmd/2]).
 -export([decode/1]).
+
+-export_type([command/0, resp_error/0, resp_scalar/0, resp_term/0]).
 
 -type command() :: atom() | binary() | nonempty_string().
 -type resp_error() :: {error, string() | binary()}.
 -type resp_scalar() :: number() | iolist() | string() | binary() | atom() | boolean() | 'nil'.
--type resp_term() :: resp_scalar() | resp_error() | resp_terms().
--type resp_terms() :: list(resp_term()).
--type options() :: #{
-        mode => client | server | none()
-       }.
+-type resp_term() :: [resp_term()] | resp_scalar() | resp_error().
 
--type error() :: {error, Reason :: term()}.
--type bad_resp_error() :: {error,
-                           {bad_resp,
-                            list(integer
-                                 | simple_string
-                                 | bulk_string
-                                 | array
-                                 | error
-                                 | unknown)}}.
--type decoded_term() :: {ok, Term :: resp_term(), Rest :: binary()}.
 
 %%====================================================================
 %% API functions
@@ -47,24 +35,11 @@
 
 %% Encoding
 
-%% @equiv encode(Term, #{})
-encode(Term) ->
-  encode(Term, #{}).
-
-%% @doc Encodes an Erlang term using the given options. If the Term cannot be
-%% encoded, it fails with a `badarg' error.
+%% @doc Encodes an Erlang term using client encoding (e.g., to send to a Redis
+%% or similar server). This will encode Term as a bulk string. To encode an
+%% array of terms, including a command string, use `cmd/2'.
 %%
-%% Options may include a `mode' key, which if set to `client' will encode all
-%% terms passed as bulk strings. To produce a flat list suitable for client
-%% encoding of a command, you can use the `cmd/2' function.
-%%
-%% By default, if no options are given (i.e., Options is an empty map), server
-%% encoding is used. For common cases using server encoding, you should prefer
-%% using `encode/1'.
-%%
-%% === Client Encoding ===
-%%
-%% The following types can be encoded as bulk strings in client encoding:
+%% The following types can be encoded as bulk strings:
 %%
 %% <ul>
 %% <li>IOLists</li>
@@ -73,6 +48,23 @@ encode(Term) ->
 %% <li>Floats</li>
 %% <li>Atoms</li>
 %% </ul>
+%%
+%% @see cmd/2
+-spec encode_client(Term)
+-> {ok, iolist()} | {error, badarg}
+     when Term :: atom() | iolist() | number() | binary().
+encode_client(Term) ->
+  try encode_client_unsafe(Term) of
+    IOList when is_list(IOList) ->
+      {ok, IOList}
+  catch
+    error:badarg ->
+      {error, badarg}
+  end.
+
+%% @doc Encodes an Erlang term using server encoding (e.g., responses to
+%% a client). If the Term cannot be encoded, it fails with a `badarg' error.
+%%
 %%
 %% === Server Encoding ===
 %%
@@ -140,16 +132,28 @@ encode(Term) ->
 %%     <td>RESP integers 1 and 0, respectively.</td>
 %%   </tr>
 %% </table>
-%%
-%% @see cmd/2
--spec encode(Term :: resp_term(), Options :: options()) -> iolist().
-encode(Term, #{mode := client} = Options) ->
-  encode_client(Term, Options);
-encode(Term, Options) ->
-  encode_server(Term, Options).
+-spec encode_server(Term)
+-> {ok, iolist()} | {error, badarg}
+     when Term ::
+          [Term]
+          | number()
+          | atom()
+          | binary()
+          | {bulk, iolist()}
+          | {error, Reason | {Class, Reason}},
+          Reason :: atom() | binary() | nonempty_string(),
+          Class :: Reason.
+encode_server(Term) ->
+  try encode_server_unsafe(Term) of
+    IOList when is_list(IOList) ->
+      {ok, IOList}
+  catch
+    error:Reason ->
+      {error, Reason}
+  end.
 
 %% @equiv cmd(Command, [])
--spec cmd(Command :: command()) -> iolist() | error().
+-spec cmd(Command :: command()) -> iolist() | {error, badarg}.
 cmd(Command) ->
   cmd(Command, []).
 
@@ -158,12 +162,21 @@ cmd(Command) ->
 %%
 %% This is intended for use as the client encoding when sending commands to
 %% a Redis or RESP-compatible server.
--spec cmd(Command :: command(), Args :: resp_terms()) -> iolist() | error().
+-spec cmd(Command, Args)
+-> iolist() | {error, badarg}
+     when Command :: command(),
+          Args :: [atom() | iolist() | number() | binary()].
 cmd(Command, Args) when is_atom(Command), is_list(Args) ->
   cmd(atom_to_binary(Command, utf8), Args);
 cmd(Command, Args) when is_binary(Command), is_list(Args);
                         is_list(Command), is_list(Args) ->
-  encode_array([upper(Command)|Args], #{mode => client}).
+  try encode_array([upper(Command)|Args], fun encode_client_unsafe/1) of
+    IOList when is_list(IOList) ->
+      {ok, IOList}
+  catch
+    error:badarg ->
+      {error, badarg}
+  end.
 
 %% Decoding
 
@@ -216,14 +229,28 @@ cmd(Command, Args) when is_binary(Command), is_list(Args);
 %%     <td>`{error, <<"ERROR description">>}'</td>
 %%   </tr>
 %% </table>
--spec decode(binary()) -> decoded_term() | bad_resp_error().
+-spec decode(binary())
+-> Decoded | Error
+     when Decoded :: {ok, Term, Rest :: binary()},
+          Term :: [Term] | binary() | integer() | 'nil' | 'ok' | {error, binary()},
+          Error :: {error,
+                    eof
+                    | {bad_resp, [integer
+                                  | simple_string
+                                  | bulk_string
+                                  | array
+                                  | error
+                                  | unknown]}
+                   }.
 decode(Bin) when is_binary(Bin) ->
   try decode_binary(Bin) of
     {Term, Rest} ->
       {ok, Term, Rest}
   catch
-    error:Reason ->
-      {error, Reason}
+    error:{bad_resp, _} = Reason ->
+      {error, Reason};
+    error:eof ->
+      {error, eof}
   end.
 
 
@@ -231,31 +258,32 @@ decode(Bin) when is_binary(Bin) ->
 %% Internal functions
 %%====================================================================
 
-%% Encoding
-
-encode_client(List, _Options) when is_list(List) ->
+encode_client_unsafe(List) when is_list(List) ->
   encode_bulk_string(List);
-encode_client(Integer, _Options) when is_integer(Integer) ->
+encode_client_unsafe(Integer) when is_integer(Integer) ->
   encode_bulk_string(integer_to_binary(Integer, 10));
-encode_client(Term, Options) ->
-  encode_term(Term, Options).
+encode_client_unsafe(Term) ->
+  encode_term(Term).
 
-encode_server(nil, _Options) ->
+encode_server_unsafe(nil) ->
   encode_nil();
-encode_server(true, _Options) ->
+encode_server_unsafe(true) ->
   encode_integer(1);
-encode_server(false, _Options) ->
+encode_server_unsafe(false) ->
   encode_integer(0);
-encode_server(ok, _Options) ->
+encode_server_unsafe(ok) ->
   encode_ok();
-encode_server({bulk, String}, _Options) when is_binary(String); is_list(String) ->
+encode_server_unsafe({bulk, String}) when is_binary(String); is_list(String) ->
   encode_bulk_string(String);
-encode_server({bulk, _String}, _Options) ->
-  error(bad_iolist);
-encode_server({error, Reason}, _Options) ->
+encode_server_unsafe({bulk, _String}) ->
+  error(badarg);
+encode_server_unsafe({error, Reason}) ->
   encode_error(Reason);
-encode_server(Term, Options) ->
-  encode_term(Term, Options).
+encode_server_unsafe(Term) ->
+  encode_term(Term).
+
+
+%% Encoding
 
 -define(CRLF, "\r\n").
 -define(EMPTY_BULK_STRING, <<$$, "0", ?CRLF, ?CRLF>>).
@@ -270,26 +298,20 @@ encode_float(Float) when is_float(Float) ->
   encode_bulk_string(float_to_binary(Float, [{decimals, 14}, compact])).
 
 encode_bulk_string(<<>>) ->
-  ?EMPTY_BULK_STRING;
+  [?EMPTY_BULK_STRING];
 encode_bulk_string([]) ->
-  ?EMPTY_BULK_STRING;
+  [?EMPTY_BULK_STRING];
 encode_bulk_string(String) when is_binary(String) ->
   [$$, integer_to_binary(byte_size(String), 10), <<?CRLF>>, String, <<?CRLF>>];
 encode_bulk_string(IOList) when is_list(IOList) ->
-  try iolist_size(IOList) of
-    Size ->
-      [$$, integer_to_binary(Size, 10), <<?CRLF>>, IOList, <<?CRLF>>]
-  catch
-    error:badarg ->
-      error(bad_iolist)
-  end.
+  [$$, integer_to_binary(iolist_size(IOList), 10), <<?CRLF>>, IOList, <<?CRLF>>].
 
--spec encode_array(resp_terms(), options()) -> iolist().
-encode_array([], _Options) ->
+-spec encode_array([resp_term()], fun((resp_term()) -> iolist())) -> iolist().
+encode_array([], _EncodeFun) ->
   [<<$*, "0", ?CRLF, ?CRLF>>];
-encode_array(List, Options) when is_list(List) ->
+encode_array(List, EncodeFun) when is_list(List) ->
   [$*, integer_to_binary(length(List)), <<?CRLF>>,
-   [encode(Term, Options) || Term <- List], <<?CRLF>>].
+   [EncodeFun(Term) || Term <- List], <<?CRLF>>].
 
 -spec encode_ok() -> iolist().
 encode_ok() ->
@@ -333,18 +355,18 @@ simple_list_string_loop([_|Tail]) -> simple_list_string_loop(Tail).
 encode_atom(Atom) when is_atom(Atom) ->
   encode_bulk_string(erlang:atom_to_binary(Atom, utf8)).
 
--spec encode_term(resp_term(), options()) -> iolist().
-encode_term(Atom, _Options) when is_atom(Atom) ->
+-spec encode_term(resp_term()) -> iolist().
+encode_term(Atom) when is_atom(Atom) ->
   encode_atom(Atom);
-encode_term(Binary, _Options) when is_binary(Binary) ->
+encode_term(Binary) when is_binary(Binary) ->
   encode_bulk_string(Binary);
-encode_term(Integer, _Options) when is_integer(Integer) ->
+encode_term(Integer) when is_integer(Integer) ->
   encode_integer(Integer);
-encode_term(Float, _Options) when is_float(Float) ->
+encode_term(Float) when is_float(Float) ->
   encode_float(Float);
-encode_term(List, Options) when is_list(List) ->
-  encode_array(List, Options);
-encode_term(_Term, _Options) ->
+encode_term(List) when is_list(List) ->
+  encode_array(List, fun encode_server_unsafe/1);
+encode_term(_Term) ->
   error(badarg).
 
 -spec upper(binary()) -> binary();
@@ -382,7 +404,9 @@ decode_simple_string(Bin) ->
 decode_bulk_string(<<"-1\r\n", Rest/binary>>) ->
   {'nil', Rest};
 decode_bulk_string(Bin) ->
-  try decode_integer(Bin) of
+  case decode_size(Bin, bulk_string) of
+    {bad_resp, _} = Reason ->
+      error(Reason);
     {Length, Rest0} when Length >= 0 ->
       case Rest0 of
         <<Str:Length/binary, "\r\n", Rest/binary>> ->
@@ -392,16 +416,15 @@ decode_bulk_string(Bin) ->
       end;
     _Error ->
       error({bad_resp, [bulk_string]})
-  catch
-    error:{bad_resp, [_Pred|Tail]} ->
-      error({bad_resp, [bulk_string|Tail]})
   end.
 
--spec decode_array(binary()) -> {resp_terms() | 'nil', binary()} | no_return().
+-spec decode_array(binary()) -> {[resp_term()] | 'nil', binary()} | no_return().
 decode_array(<<"-1\r\n", Rest/binary>>) ->
   {'nil', Rest};
 decode_array(Bin) ->
-  try decode_integer(Bin) of
+  case decode_size(Bin, array) of
+    {bad_resp, _} = Reason ->
+      error(Reason);
     {0, <<"\r\n", Rest0/binary>>} ->
       {[], Rest0};
     {Length, Rest0} when Length > 0 ->
@@ -413,12 +436,9 @@ decode_array(Bin) ->
       end;
     _Error ->
       error({bad_resp, [array]})
-  catch
-    error:{bad_resp, [_Pred|Tail]} ->
-      error({bad_resp, [array|Tail]})
   end.
 
--spec decode_array_n(binary(), non_neg_integer(), resp_terms()) -> {resp_terms(), binary()} | no_return().
+-spec decode_array_n(binary(), non_neg_integer(), [resp_term()]) -> {[resp_term()], binary()} | no_return().
 decode_array_n(Bin, 0, Accum) ->
   {lists:reverse(Accum), Bin};
 decode_array_n(Bin, N, Accum) when N > 0 ->
@@ -431,21 +451,30 @@ decode_array_n(Bin, N, Accum) when N > 0 ->
 
 -spec decode_integer(binary()) -> {integer(), binary()} | no_return().
 decode_integer(Bin) ->
-  {Str, Rest} = read_simple_string(Bin, integer),
-  try binary_to_integer(Str, 10) of
-    Int ->
-      {Int, Rest}
-  catch
-    error:badarg ->
-      error({bad_resp, [integer]})
+  case decode_size(Bin, integer) of
+    {bad_resp, _} = Reason -> error(Reason);
+    Result -> Result
   end.
+
+decode_size(<<$-, Rest/binary>>, Type) ->
+  {Pos, Rest1} = decode_integer_loop(Rest, 0, 0, Type),
+  {-Pos, Rest1};
+decode_size(Bin, Type) ->
+  decode_integer_loop(Bin, 0, 0, Type).
+
+decode_integer_loop(<<N:8/integer, Rest/binary>>, Bytes, Acc, Type) when N >= $0, N =< $9 ->
+  decode_integer_loop(Rest, Bytes+1, Acc*10 + (N - $0), Type);
+decode_integer_loop(<<?CRLF, Rest/binary>>, Bytes, Acc, _Type) when Bytes > 0 ->
+  {Acc, Rest};
+decode_integer_loop(_Bin, _Bytes, _Acc, Type) ->
+  {bad_resp, [Type]}.
 
 -spec decode_error(binary()) -> {resp_error(), binary()} | no_return().
 decode_error(Bin) ->
   {Reason, Rest} = read_simple_string(Bin, error),
   {{error, Reason}, Rest}.
 
--spec read_simple_string(atom(), binary()) -> {ok | binary(), binary()} | no_return().
+-spec read_simple_string(binary(), error | integer | simple_string) -> {ok | binary(), binary()} | no_return().
 read_simple_string(Bin, Type) ->
   {Msg, Rest0} = split_binary(Bin, read_simple_string_loop(Bin, Type, 0)),
   {_CRLF, Rest1} = split_binary(Rest0, 2),
