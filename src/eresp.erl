@@ -302,25 +302,32 @@ encode_error({Class, Reason})
        is_atom(Reason) orelse is_binary(Reason) orelse is_list(Reason) ->
   [$-, upper(simple_string(Class)), <<" ">>, simple_string(Reason), <<?CRLF>>].
 
-not_crlf(Char) ->
-  Char =/= $\r andalso Char =/= $\n.
-
 simple_string(Str) when is_binary(Str) ->
-  case binary:split(Str, [<<$\r>>, <<$\n>>]) of
-    [Str] ->
+  case simple_binary_string_loop(Str) of
+    true ->
       Str;
-    _Error ->
+    _ ->
       error(badarg)
   end;
 simple_string(Str) when is_list(Str) ->
-  case lists:splitwith(fun not_crlf/1, Str) of
-    {Str, []} ->
+  case simple_list_string_loop(Str) of
+    true ->
       Str;
-    _Error ->
+    _ ->
       error(badarg)
   end;
 simple_string(Str) when is_atom(Str) ->
   simple_string(atom_to_binary(Str, utf8)).
+
+simple_binary_string_loop(<<>>) -> true;
+simple_binary_string_loop(<<$\r, _/binary>>) -> false;
+simple_binary_string_loop(<<$\n, _/binary>>) -> false;
+simple_binary_string_loop(<<_, Rest/binary>>) -> simple_binary_string_loop(Rest).
+
+simple_list_string_loop([]) -> true;
+simple_list_string_loop([$\r|_]) -> false;
+simple_list_string_loop([$\n|_]) -> false;
+simple_list_string_loop([_|Tail]) -> simple_list_string_loop(Tail).
 
 -spec encode_atom(atom()) -> iolist().
 encode_atom(Atom) when is_atom(Atom) ->
@@ -352,15 +359,15 @@ upper(List) when is_list(List) ->
 %% Decoding
 
 -spec decode_binary(binary()) -> {resp_term(), binary()} | no_return().
-decode_binary(<<$+, Rest/binary>> = _Bin) ->
+decode_binary(<<$+, Rest/binary>>) ->
   decode_simple_string(Rest);
-decode_binary(<<$$, Rest/binary>> = _Bin) ->
+decode_binary(<<$$, Rest/binary>>) ->
   decode_bulk_string(Rest);
-decode_binary(<<$*, Rest/binary>> = _Bin) ->
+decode_binary(<<$*, Rest/binary>>) ->
   decode_array(Rest);
-decode_binary(<<$:, Rest/binary>> = _Bin) ->
+decode_binary(<<$:, Rest/binary>>) ->
   decode_integer(Rest);
-decode_binary(<<$-, Rest/binary>> = _Bin) ->
+decode_binary(<<$-, Rest/binary>>) ->
   decode_error(Rest);
 decode_binary(<<>>) ->
   error(eof);
@@ -369,7 +376,7 @@ decode_binary(_Bin) ->
 
 -spec decode_simple_string(binary()) -> {binary() | 'ok', binary()} | no_return().
 decode_simple_string(Bin) ->
-  read_simple_string(simple_string, Bin).
+  read_simple_string(Bin, simple_string).
 
 -spec decode_bulk_string(binary()) -> {binary() | 'nil', binary()} | no_return().
 decode_bulk_string(<<"-1\r\n", Rest/binary>>) ->
@@ -424,7 +431,7 @@ decode_array_n(Bin, N, Accum) when N > 0 ->
 
 -spec decode_integer(binary()) -> {integer(), binary()} | no_return().
 decode_integer(Bin) ->
-  {Str, Rest} = read_simple_string(integer, Bin),
+  {Str, Rest} = read_simple_string(Bin, integer),
   try binary_to_integer(Str, 10) of
     Int ->
       {Int, Rest}
@@ -435,16 +442,25 @@ decode_integer(Bin) ->
 
 -spec decode_error(binary()) -> {resp_error(), binary()} | no_return().
 decode_error(Bin) ->
-  {Reason, Rest} = read_simple_string(error, Bin),
+  {Reason, Rest} = read_simple_string(Bin, error),
   {{error, Reason}, Rest}.
 
 -spec read_simple_string(atom(), binary()) -> {ok | binary(), binary()} | no_return().
-read_simple_string(simple_string, <<"OK\r\n", Rest/binary>>) ->
-  {ok, Rest};
-read_simple_string(Type, Bin) ->
-  case binary:split(Bin, <<"\r">>) of
-    [Message, <<"\n", Rest/binary>>] ->
-      {Message, Rest};
-    _Error ->
-      error({bad_resp, [Type]})
+read_simple_string(Bin, Type) ->
+  {Msg, Rest0} = split_binary(Bin, read_simple_string_loop(Bin, Type, 0)),
+  {_CRLF, Rest1} = split_binary(Rest0, 2),
+  case Msg of
+    <<"OK">> -> {ok, Rest1};
+    _ -> {Msg, Rest1}
   end.
+
+read_simple_string_loop(<<?CRLF, _/binary>>, _Type, Index) ->
+  Index;
+read_simple_string_loop(<<Byte:8/integer, _/binary>>, Type, _Index)
+  when Byte =:= $\r;
+       Byte =:= $\n ->
+  error({bad_resp, [Type]});
+read_simple_string_loop(<<>>, Type, _Index) ->
+  error({bad_resp, [Type]});
+read_simple_string_loop(<<_Byte:8/integer, Rest/binary>>, Type, Index) ->
+  read_simple_string_loop(Rest, Type, Index+1).

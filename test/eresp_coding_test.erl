@@ -333,12 +333,32 @@ decode_test_() ->
             <<"$12.5\r\nfoobar bazwub\r\n">>,
             {error, {bad_resp, [bulk_string]}}},
 
-           {"Decode a simple string without a CRLF and return an error",
+           {"Decode an unterminated OK simple string",
             <<"+OK">>,
+            {error, {bad_resp, [simple_string]}}},
+
+           {"Decode an unterminated simple string",
+            <<"+foobar">>,
+            {error, {bad_resp, [simple_string]}}},
+
+           {"Decode an invalid simple string (\\n)",
+            <<"+foobar\n\r\n">>,
+            {error, {bad_resp, [simple_string]}}},
+
+           {"Decode an invalid simple string (\\r)",
+            <<"+foobar\rfoobar\r\n">>,
             {error, {bad_resp, [simple_string]}}},
 
            {"Decode an error without a CRLF and return an error",
             <<"-ERROR bad error">>,
+            {error, {bad_resp, [error]}}},
+
+           {"Decode an invalid error (\\n)",
+            <<"-ERROR bad error\n\r\n">>,
+            {error, {bad_resp, [error]}}},
+
+           {"Decode an invalid error (\\r)",
+            <<"-ERROR bad\rerror\r\n">>,
             {error, {bad_resp, [error]}}},
 
            {"Decode a malformed array and return an error",
