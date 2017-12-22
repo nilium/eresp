@@ -357,7 +357,6 @@ decode_binary(<<$+, Rest/binary>> = _Bin) ->
 decode_binary(<<$$, Rest/binary>> = _Bin) ->
   decode_bulk_string(Rest);
 decode_binary(<<$*, Rest/binary>> = _Bin) ->
-  io:format("decode array~n"),
   decode_array(Rest);
 decode_binary(<<$:, Rest/binary>> = _Bin) ->
   decode_integer(Rest);
@@ -395,12 +394,10 @@ decode_bulk_string(Bin) ->
 decode_array(<<"-1\r\n", Rest/binary>>) ->
   {'nil', Rest};
 decode_array(Bin) ->
-  io:format("decode bulk array~n"),
   try decode_integer(Bin) of
     {0, <<"\r\n", Rest0/binary>>} ->
       {[], Rest0};
     {Length, Rest0} when Length > 0 ->
-      io:format("decode bulk array N=~w~n", [Length]),
       case  decode_array_n(Rest0, Length, []) of
         {List, <<"\r\n", Rest1/binary>>} ->
           {List, Rest1};
@@ -418,10 +415,8 @@ decode_array(Bin) ->
 decode_array_n(Bin, 0, Accum) ->
   {lists:reverse(Accum), Bin};
 decode_array_n(Bin, N, Accum) when N > 0 ->
-  io:format("reading array element~n"),
   case decode(Bin) of
     {ok, Term, Rest} ->
-      io:format("read array element~n"),
       decode_array_n(Rest, N-1, [Term|Accum]);
     {error, {bad_resp, Tail}} ->
       error({bad_resp, [array|Tail]})
