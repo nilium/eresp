@@ -77,7 +77,7 @@ encode_server_test_() ->
 
            {"Encode empty lists as empty arrays",
             [],
-            {ok, <<"*0\r\n\r\n">>}},
+            {ok, <<"*0\r\n">>}},
 
            {"Encode lists as arrays",
             [<<"foo">>, $b, "ar"],
@@ -87,8 +87,6 @@ encode_server_test_() ->
               "*2\r\n",
               ":97\r\n"
               ":114\r\n"
-              "\r\n"
-              "\r\n"
             >>}},
 
            % Floats
@@ -97,7 +95,7 @@ encode_server_test_() ->
             {ok, <<"*2\r\n"
               "$6\r\n123.45\r\n"
               "$7\r\n-123.45\r\n"
-              "\r\n">>}},
+                 >>}},
 
            % Integers
            {"Encode integers as RESP integers",
@@ -252,27 +250,27 @@ cmd_test_() ->
            %% Use ping as a simple command example
            {"Ping (cmd/1) - atom",
             ping,
-            {ok, <<"*1\r\n$4\r\nPING\r\n\r\n">>}},
+            {ok, <<"*1\r\n$4\r\nPING\r\n">>}},
 
            {"Ping (cmd/2) - atom",
             {ping, []},
-            {ok, <<"*1\r\n$4\r\nPING\r\n\r\n">>}},
+            {ok, <<"*1\r\n$4\r\nPING\r\n">>}},
 
            {"Ping (cmd/1) - binary",
             <<"Ping">>,
-            {ok, <<"*1\r\n$4\r\nPING\r\n\r\n">>}},
+            {ok, <<"*1\r\n$4\r\nPING\r\n">>}},
 
            {"Ping (cmd/1) - list",
             "ping",
-            {ok, <<"*1\r\n$4\r\nPING\r\n\r\n">>}},
+            {ok, <<"*1\r\n$4\r\nPING\r\n">>}},
 
            {"Ping (cmd/2) - pong",
             {ping, ["pong"]},
-            {ok, <<"*2\r\n$4\r\nPING\r\n$4\r\npong\r\n\r\n">>}},
+            {ok, <<"*2\r\n$4\r\nPING\r\n$4\r\npong\r\n">>}},
 
            {"Nested lists are iolists",
             {rpush, ["key", ["foo", <<"bar">>]]},
-            {ok, <<"*3\r\n$5\r\nRPUSH\r\n$3\r\nkey\r\n$6\r\nfoobar\r\n\r\n">>}},
+            {ok, <<"*3\r\n$5\r\nRPUSH\r\n$3\r\nkey\r\n$6\r\nfoobar\r\n">>}},
 
            {"All types are bulk strings",
             {type, [-123, "list", <<"bin">>, 123.45, true, false, nil, [], <<>>, [<<>>]]},
@@ -287,8 +285,7 @@ cmd_test_() ->
               "$3\r\nnil\r\n"
               "$0\r\n\r\n"
               "$0\r\n\r\n"
-              "$0\r\n\r\n"
-              "\r\n">>}},
+              "$0\r\n\r\n">>}},
 
            %% Invalid messages
 
@@ -301,6 +298,8 @@ cmd_test_() ->
 
 decode_test_gen({<<$+, _/binary>> = In, {ok, Term, _} = Out}) when Term =/= ok ->
   % Special case -- only encoding 'ok' will produce a simple string
+  fun() -> ?assertEqual(Out, eresp:decode(In)) end;
+decode_test_gen({{decode_only, In}, {ok, Term, _} = Out}) when Term =/= ok ->
   fun() -> ?assertEqual(Out, eresp:decode(In)) end;
 decode_test_gen({<<"*-1\r\n", _/binary>> = In, Out}) ->
   % Special case --re-encoding nil will only produce a nil bulk string
@@ -336,14 +335,14 @@ decode_test_() ->
 
            {"Decode arrays as lists",
             <<"*12\r\n"
-              "*0\r\n\r\n"
+              "*0\r\n"
               "$5\r\nfalse\r\n"
               "$4\r\ntrue\r\n"
               "$2\r\nOK\r\n"
               "-PROTO protocol error\r\n"
               "+OK\r\n"
               "$-1\r\n"
-              "*1\r\n" "$3\r\nfoo\r\n" "\r\n"
+              "*1\r\n" "$3\r\nfoo\r\n"
               ":-12345\r\n"
               ":12345\r\n"
               "$6\r\n123.45\r\n"
@@ -363,7 +362,7 @@ decode_test_() ->
               <<"123.45">>,
               0
              ],
-             <<"+Trailing\r\n">>}
+             <<"\r\n+Trailing\r\n">>}
            },
 
            {"Decode errors as {error, Description} tuples",
@@ -389,6 +388,10 @@ decode_test_() ->
            {"Decode null bulks as 'nil'",
             <<"$-1\r\n+Trailing\r\n">>,
             {ok, 'nil', <<"+Trailing\r\n">>}},
+
+           {"Decode a simple array",
+            {decode_only, <<"*1\r\n+1\r\n\r\n">>},
+            {ok, [<<"1">>], <<"\r\n">>}},
 
            %% Invalid payloads
 
@@ -464,17 +467,9 @@ decode_test_() ->
             <<"-ERROR bad\rerror\r\n">>,
             {error, {bad_resp, [error]}}},
 
-           {"Decode a malformed array and return an error",
-            <<"*\r\n+1\r\n">>,
-            {error, {bad_resp, [array]}}},
-
            {"Decode a short array and return an error",
             <<"*1\r\n\r\n">>,
             {error, {bad_resp, [array, unknown]}}},
-
-           {"Decode an array with an invalid length and return an error",
-            <<"*1\r\n:1\r\n:2\r\n\r\n">>,
-            {error, {bad_resp, [array]}}},
 
            {"Decode an array with a length < -1 and return an error",
             <<"*-2\r\n:1\r\n:2\r\n\r\n">>,

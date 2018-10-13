@@ -308,10 +308,10 @@ encode_bulk_string(IOList) when is_list(IOList) ->
 
 -spec encode_array([resp_term()], fun((resp_term()) -> iolist())) -> iolist().
 encode_array([], _EncodeFun) ->
-  [<<$*, "0", ?CRLF, ?CRLF>>];
+  [<<$*, "0", ?CRLF>>];
 encode_array(List, EncodeFun) when is_list(List) ->
   [$*, integer_to_binary(length(List)), <<?CRLF>>,
-   [EncodeFun(Term) || Term <- List], <<?CRLF>>].
+   [EncodeFun(Term) || Term <- List]].
 
 -spec encode_ok() -> iolist().
 encode_ok() ->
@@ -421,20 +421,15 @@ decode_bulk_string(Bin) ->
 -spec decode_array(binary()) -> {[resp_term()] | 'nil', binary()} | no_return().
 decode_array(<<"-1\r\n", Rest/binary>>) ->
   {'nil', Rest};
+decode_array(<<"0\r\n", Rest/binary>>) ->
+  {[], Rest};
 decode_array(Bin) ->
   case decode_size(Bin, array) of
     {bad_resp, _} = Reason ->
       error(Reason);
-    {0, <<"\r\n", Rest0/binary>>} ->
-      {[], Rest0};
-    {Length, Rest0} when Length > 0 ->
-      case  decode_array_n(Rest0, Length, []) of
-        {List, <<"\r\n", Rest1/binary>>} ->
-          {List, Rest1};
-        _Error ->
-          error({bad_resp, [array]})
-      end;
-    _Error ->
+    {Length, Rest} when Length > 0 ->
+      decode_array_n(Rest, Length, []);
+    _ ->
       error({bad_resp, [array]})
   end.
 
