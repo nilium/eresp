@@ -1,8 +1,8 @@
 eresp
 =====
 
-[![Build Status](https://travis-ci.org/nilium/eresp.svg?branch=master)](https://travis-ci.org/nilium/eresp)
-[![Coverage Status](https://coveralls.io/repos/github/nilium/eresp/badge.svg?branch=master)](https://coveralls.io/github/nilium/eresp?branch=master)
+[![CircleCI](https://circleci.com/gh/nilium/eresp/tree/master.svg?style=svg)](https://circleci.com/gh/nilium/eresp/tree/master)
+[![codecov](https://codecov.io/gh/nilium/eresp/branch/master/graph/badge.svg)](https://codecov.io/gh/nilium/eresp)
 
 eresp is a library to encode and decode [RESP][resp], the Redis serialization
 protocol.

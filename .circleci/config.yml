@@ -1,0 +1,19 @@
+version: 2.1
+jobs:
+  build:
+    docker:
+      - image: circleci/erlang:21
+    working_directory: /tmp/src
+    steps:
+      - checkout
+      - restore_cache:
+          keys:
+            - rebar3-cache-{{ checksum "rebar.lock" }}
+      - run: rebar3 compile
+      - run: rebar3 as test eunit
+      - run: rebar3 as test dialyzer
+      - run: bash <(curl -s https://codecov.io/bash) -f _build/test/cover/eunit.coverdata
+      - save_cache:
+          key: rebar3-cache-{{ checksum "rebar.lock" }}
+          paths:
+            - ~/.cache/rebar3
